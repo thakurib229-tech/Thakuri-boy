@@ -35,6 +35,7 @@
 #include "shell/renderer/content_settings_observer.h"
 #include "shell/renderer/electron_api_service_impl.h"
 #include "shell/renderer/electron_autofill_agent.h"
+#include "shell/renderer/oom_stack_trace.h"
 #include "third_party/abseil-cpp/absl/strings/str_format.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
@@ -360,6 +361,13 @@ void RendererClientBase::GetInterface(
 }
 #endif
 
+void RendererClientBase::DidCreateScriptContext(
+    v8::Isolate* isolate,
+    v8::Local<v8::Context> context,
+    content::RenderFrame* render_frame) {
+  RegisterOomStackTraceCallback(isolate);
+}
+
 void RendererClientBase::DidClearWindowObject(
     content::RenderFrame* render_frame) {
   // Make sure every page will get a script context created.
@@ -533,6 +541,16 @@ void RendererClientBase::WillDestroyServiceWorkerContextOnWorkerThread(
           context, service_worker_version_id, service_worker_scope, script_url,
           service_worker_token);
 #endif
+}
+
+void RendererClientBase::WorkerScriptReadyForEvaluationOnWorkerThread(
+    v8::Local<v8::Context> context) {
+  RegisterOomStackTraceCallback(v8::Isolate::GetCurrent());
+}
+
+void RendererClientBase::WillDestroyWorkerContextOnWorkerThread(
+    v8::Local<v8::Context> context) {
+  UnregisterOomStackTraceCallback(v8::Isolate::GetCurrent());
 }
 
 void RendererClientBase::WebViewCreated(blink::WebView* web_view,
