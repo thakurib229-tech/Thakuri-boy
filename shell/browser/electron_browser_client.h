@@ -111,6 +111,10 @@ class ElectronBrowserClient : public content::ContentBrowserClient,
       content::PosixFileDescriptorInfo* mappings) override;
 #endif
 
+  // extensions::ChromeContentBrowserClientExtensionsPart:
+  bool DoesSiteRequireDedicatedProcess(content::BrowserContext* browser_context,
+                                       const GURL& effective_site_url) override;
+
   std::string GetUserAgent() override;
   void SetUserAgent(const std::string& user_agent);
   blink::UserAgentMetadata GetUserAgentMetadata() override;
