@@ -1739,6 +1739,12 @@ void ElectronBrowserClient::GetAdditionalMappedFilesForChildProcess(
 }
 #endif
 
+bool ElectronBrowserClient::IsFullscreenAllowedForUnfocusedWebContents(
+    content::WebContents* unfocused_web_contents) {
+  return static_cast<content::WebContentsImpl*>(unfocused_web_contents)
+      ->IsGuest();
+}
+
 bool ElectronBrowserClient::DoesSiteRequireDedicatedProcess(
     content::BrowserContext* browser_context,
     const GURL& effective_site_url) {
@@ -1749,12 +1755,6 @@ bool ElectronBrowserClient::DoesSiteRequireDedicatedProcess(
   return content::ContentBrowserClient::DoesSiteRequireDedicatedProcess(
       browser_context, effective_site_url);
 #endif
-}
-
-bool ElectronBrowserClient::IsFullscreenAllowedForUnfocusedWebContents(
-    content::WebContents* unfocused_web_contents) {
-  return static_cast<content::WebContentsImpl*>(unfocused_web_contents)
-      ->IsGuest();
 }
 
 std::unique_ptr<content::LoginDelegate>
