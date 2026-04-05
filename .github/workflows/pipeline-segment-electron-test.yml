@@ -79,7 +79,7 @@ jobs:
         cp "C:\Python311\python.exe" "C:\Python311\python3.exe"
     - name: Setup Node.js/npm
       if: ${{ inputs.target-platform == 'win' }}
-      uses: actions/setup-node@0a44ba7841725637a19e28fa30b79a866c81b0a6
+      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
       with:
         node-version: 20.11.x
     - name: Add TCC permissions on macOS
