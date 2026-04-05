@@ -110,6 +110,8 @@ class ElectronBrowserClient : public content::ContentBrowserClient,
       int child_process_id,
       content::PosixFileDescriptorInfo* mappings) override;
 #endif
+  bool IsFullscreenAllowedForUnfocusedWebContents(
+      content::WebContents* unfocused_web_contents) override;
 
   // extensions::ChromeContentBrowserClientExtensionsPart:
   bool DoesSiteRequireDedicatedProcess(content::BrowserContext* browser_context,

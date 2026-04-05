@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "base/base64.h"
+#include "base/containers/fixed_flat_set.h"
 #include "base/containers/span.h"
 #include "base/dcheck_is_on.h"
 #include "base/memory/raw_ptr.h"
@@ -58,6 +59,7 @@
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
+#include "url/url_util.h"
 #include "v8/include/v8.h"
 
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
@@ -158,6 +160,13 @@ void OnOpenItemComplete(const base::FilePath& path, const std::string& result) {
 
 constexpr base::TimeDelta kInitialBackoffDelay = base::Milliseconds(250);
 constexpr base::TimeDelta kMaxBackoffDelay = base::Seconds(10);
+
+constexpr auto kValidDockStates = base::MakeFixedFlatSet<std::string_view>(
+    {"bottom", "left", "right", "undocked"});
+
+bool IsValidDockState(const std::string& state) {
+  return kValidDockStates.contains(state);
+}
 
 }  // namespace
 
@@ -393,7 +402,7 @@ void InspectableWebContents::SetDockState(const std::string& state) {
     can_dock_ = false;
   } else {
     can_dock_ = true;
-    dock_state_ = state;
+    dock_state_ = IsValidDockState(state) ? state : "right";
   }
 }
 
@@ -558,7 +567,13 @@ void InspectableWebContents::LoadCompleted() {
           pref_service_->GetDict(kDevToolsPreferences);
       const std::string* current_dock_state =
           prefs.FindString("currentDockState");
-      base::RemoveChars(*current_dock_state, "\"", &dock_state_);
+      if (current_dock_state) {
+        std::string sanitized;
+        base::RemoveChars(*current_dock_state, "\"", &sanitized);
+        dock_state_ = IsValidDockState(sanitized) ? sanitized : "right";
+      } else {
+        dock_state_ = "right";
+      }
     }
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
     auto* api_web_contents = api::WebContents::From(GetWebContents());
@@ -869,6 +884,13 @@ void InspectableWebContents::GetSyncInformation(DispatchCallback callback) {
 
 void InspectableWebContents::GetHostConfig(DispatchCallback callback) {
   base::DictValue response_dict;
+
+  base::ListValue extension_schemes;
+  for (const std::string& scheme : url::GetExtensionSchemes())
+    extension_schemes.Append(scheme + ":");
+  response_dict.Set("devToolsExtensionSchemes",
+                    base::Value(std::move(extension_schemes)));
+
   base::Value response = base::Value(std::move(response_dict));
   std::move(callback).Run(&response);
 }

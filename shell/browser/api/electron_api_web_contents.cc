@@ -1767,7 +1767,8 @@ bool WebContents::CheckMediaAccessPermission(
       content::WebContents::FromRenderFrameHost(render_frame_host);
   auto* permission_helper =
       WebContentsPermissionHelper::FromWebContents(web_contents);
-  return permission_helper->CheckMediaAccessPermission(security_origin, type);
+  return permission_helper->CheckMediaAccessPermission(render_frame_host,
+                                                       security_origin, type);
 }
 
 void WebContents::RequestMediaAccessPermission(
@@ -2450,16 +2451,9 @@ int32_t WebContents::GetProcessID() const {
 }
 
 base::ProcessId WebContents::GetOSProcessID() const {
-  base::ProcessHandle process_handle = web_contents()
-                                           ->GetPrimaryMainFrame()
-                                           ->GetProcess()
-                                           ->GetProcess()
-                                           .Handle();
-  return base::GetProcId(process_handle);
-}
-
-bool WebContents::Equal(const WebContents* web_contents) const {
-  return ID() == web_contents->ID();
+  const auto& process =
+      web_contents()->GetPrimaryMainFrame()->GetProcess()->GetProcess();
+  return process.IsValid() ? process.Pid() : base::kNullProcessId;
 }
 
 GURL WebContents::GetURL() const {
@@ -4588,7 +4582,6 @@ void WebContents::FillObjectTemplate(v8::Isolate* isolate,
                  &WebContents::SetBackgroundThrottling)
       .SetMethod("getProcessId", &WebContents::GetProcessID)
       .SetMethod("getOSProcessId", &WebContents::GetOSProcessID)
-      .SetMethod("equal", &WebContents::Equal)
       .SetMethod("_loadURL", &WebContents::LoadURL)
       .SetMethod("reload", &WebContents::Reload)
       .SetMethod("reloadIgnoringCache", &WebContents::ReloadIgnoringCache)
@@ -4605,7 +4598,6 @@ void WebContents::FillObjectTemplate(v8::Isolate* isolate,
       .SetMethod("_goForward", &WebContents::GoForward)
       .SetMethod("_canGoToOffset", &WebContents::CanGoToOffset)
       .SetMethod("_goToOffset", &WebContents::GoToOffset)
-      .SetMethod("canGoToIndex", &WebContents::CanGoToIndex)
       .SetMethod("_goToIndex", &WebContents::GoToIndex)
       .SetMethod("_getActiveIndex", &WebContents::GetActiveIndex)
       .SetMethod("_getNavigationEntryAtIndex",

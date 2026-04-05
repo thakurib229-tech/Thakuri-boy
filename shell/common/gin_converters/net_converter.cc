@@ -88,8 +88,7 @@ v8::Local<v8::Value> Converter<scoped_refptr<net::X509Certificate>>::ToV8(
   dict.Set("issuerName", val->issuer().GetDisplayName());
   dict.Set("subject", val->subject());
   dict.Set("subjectName", val->subject().GetDisplayName());
-  dict.Set("serialNumber", base::HexEncode(val->serial_number().data(),
-                                           val->serial_number().size()));
+  dict.Set("serialNumber", base::HexEncode(val->serial_number()));
   dict.Set("validStart", val->valid_start().InSecondsFSinceUnixEpoch());
   dict.Set("validExpiry", val->valid_expiry().InSecondsFSinceUnixEpoch());
   dict.Set("fingerprint",
@@ -607,6 +606,9 @@ bool Converter<scoped_refptr<network::ResourceRequestBody>>::FromV8(
     } else if (*type == "file") {
       const std::string* file = dict.FindString("filePath");
       if (!file)
+        return false;
+      if (std::any_of(file->begin(), file->end(),
+                      [](char c) { return c >= 0 && c < 0x20; }))
         return false;
       double modification_time =
           dict.FindDouble("modificationTime").value_or(0.0);

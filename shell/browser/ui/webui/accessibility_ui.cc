@@ -101,13 +101,13 @@ base::DictValue BuildTargetDescriptor(
     int process_id,
     int routing_id,
     ui::AXMode accessibility_mode,
-    base::ProcessHandle handle = base::kNullProcessHandle) {
+    base::ProcessId pid = base::kNullProcessId) {
   base::DictValue target_data;
   target_data.Set(kProcessIdField, process_id);
   target_data.Set(kRoutingIdField, routing_id);
   target_data.Set(kUrlField, url.spec());
   target_data.Set(kNameField, base::EscapeForHTML(name));
-  target_data.Set(kPidField, static_cast<int>(base::GetProcId(handle)));
+  target_data.Set(kPidField, static_cast<int>(pid));
   target_data.Set(kFaviconUrlField, favicon_url.spec());
   target_data.Set(kAccessibilityModeField,
                   static_cast<int>(accessibility_mode.flags()));
@@ -138,9 +138,12 @@ base::DictValue BuildTargetDescriptor(content::RenderViewHost* rvh) {
     accessibility_mode = web_contents->GetAccessibilityMode();
   }
 
+  const auto& process = rvh->GetProcess()->GetProcess();
+  const auto pid = process.IsValid() ? process.Pid() : base::kNullProcessId;
+
   return BuildTargetDescriptor(url, title, favicon_url,
                                rvh->GetProcess()->GetDeprecatedID(),
-                               rvh->GetRoutingID(), accessibility_mode);
+                               rvh->GetRoutingID(), accessibility_mode, pid);
 }
 
 base::DictValue BuildTargetDescriptor(electron::NativeWindow* window) {
@@ -474,22 +477,26 @@ void ElectronAccessibilityUIMessageHandler::RegisterMessages() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
   web_ui()->RegisterMessageCallback(
+      "initialize",
+      base::BindRepeating(&AccessibilityUIMessageHandler::HandleInitialize,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
       "toggleAccessibility",
-      base::BindRepeating(
-          &AccessibilityUIMessageHandler::ToggleAccessibilityForWebContents,
-          base::Unretained(this)));
+      base::BindRepeating(&AccessibilityUIMessageHandler::
+                              HandleToggleAccessibilityForWebContents,
+                          base::Unretained(this)));
   web_ui()->RegisterMessageCallback(
       "setGlobalFlag",
-      base::BindRepeating(&AccessibilityUIMessageHandler::SetGlobalFlag,
+      base::BindRepeating(&AccessibilityUIMessageHandler::HandleSetGlobalFlag,
                           base::Unretained(this)));
   web_ui()->RegisterMessageCallback(
       "setGlobalString",
-      base::BindRepeating(&AccessibilityUIMessageHandler::SetGlobalString,
+      base::BindRepeating(&AccessibilityUIMessageHandler::HandleSetGlobalString,
                           base::Unretained(this)));
   web_ui()->RegisterMessageCallback(
       "requestWebContentsTree",
       base::BindRepeating(
-          &AccessibilityUIMessageHandler::RequestWebContentsTree,
+          &AccessibilityUIMessageHandler::HandleRequestWebContentsTree,
           base::Unretained(this)));
   web_ui()->RegisterMessageCallback(
       "requestNativeUITree",
@@ -499,13 +506,14 @@ void ElectronAccessibilityUIMessageHandler::RegisterMessages() {
 #if defined(USE_AURA)
   web_ui()->RegisterMessageCallback(
       "requestWidgetsTree",
-      base::BindRepeating(&AccessibilityUIMessageHandler::RequestWidgetsTree,
-                          base::Unretained(this)));
+      base::BindRepeating(
+          &AccessibilityUIMessageHandler::HandleRequestWidgetsTree,
+          base::Unretained(this)));
 #endif
   web_ui()->RegisterMessageCallback(
       "requestAccessibilityEvents",
       base::BindRepeating(
-          &AccessibilityUIMessageHandler::RequestAccessibilityEvents,
+          &AccessibilityUIMessageHandler::HandleRequestAccessibilityEvents,
           base::Unretained(this)));
 
   auto* web_contents = web_ui()->GetWebContents();

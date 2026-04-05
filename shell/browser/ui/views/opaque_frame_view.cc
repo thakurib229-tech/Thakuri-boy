@@ -203,8 +203,14 @@ void OpaqueFrameView::OnPaint(gfx::Canvas* canvas) {
   if (frame()->IsFullscreen())
     return;
 
+  if (window()->IsWindowControlsOverlayEnabled())
+    UpdateFrameCaptionButtons();
+
+  if (window()->IsTranslucent())
+    return;
+
   const bool active = ShouldPaintAsActive();
-  const gfx::Insets border = RestoredFrameBorderInsets();
+  const gfx::Insets border = FrameBorderInsets(false);
   const bool showing_shadow = linux_frame_layout_->IsShowingShadow();
   gfx::RectF bounds_dip(GetLocalBounds());
   if (showing_shadow) {
@@ -228,11 +234,6 @@ void OpaqueFrameView::OnPaint(gfx::Canvas* canvas) {
   ::PaintRestoredFrameBorderLinux(*canvas, *this, frame_background_.get(), clip,
                                   showing_shadow, active, border, shadow_values,
                                   linux_frame_layout_->tiled());
-
-  if (!window()->IsWindowControlsOverlayEnabled())
-    return;
-
-  UpdateFrameCaptionButtons();
 }
 
 void OpaqueFrameView::PaintAsActiveChanged() {
@@ -341,9 +342,7 @@ views::Button* OpaqueFrameView::CreateButton(
 }
 
 gfx::Insets OpaqueFrameView::FrameBorderInsets(bool restored) const {
-  return !restored && IsFrameCondensed()
-             ? gfx::Insets()
-             : linux_frame_layout_->RestoredFrameBorderInsets();
+  return linux_frame_layout_->FrameBorderInsets(restored);
 }
 
 int OpaqueFrameView::FrameTopBorderThickness(bool restored) const {

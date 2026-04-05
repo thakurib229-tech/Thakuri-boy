@@ -32,6 +32,7 @@
 #include "components/net_log/chrome_net_log.h"
 #include "components/network_hints/common/network_hints.mojom.h"
 #include "content/browser/keyboard_lock/keyboard_lock_service_impl.h"  // nogncheck
+#include "content/browser/web_contents/web_contents_impl.h"  // nogncheck
 #include "content/public/browser/browser_main_runner.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/client_certificate_delegate.h"
@@ -559,7 +560,7 @@ void ElectronBrowserClient::AppendExtraCommandLineSwitches(
   if (process_type == ::switches::kUtilityProcess ||
       process_type == ::switches::kRendererProcess) {
     // Copy following switches to child process.
-    static constexpr std::array<const char*, 10U> kCommonSwitchNames = {
+    static constexpr std::array<const char*, 11U> kCommonSwitchNames = {
         switches::kStandardSchemes.c_str(),
         switches::kEnableSandbox.c_str(),
         switches::kSecureSchemes.c_str(),
@@ -569,7 +570,8 @@ void ElectronBrowserClient::AppendExtraCommandLineSwitches(
         switches::kServiceWorkerSchemes.c_str(),
         switches::kStreamingSchemes.c_str(),
         switches::kNoStdioInit.c_str(),
-        switches::kCodeCacheSchemes.c_str()};
+        switches::kCodeCacheSchemes.c_str(),
+        switches::kExtensionSchemes.c_str()};
     command_line->CopySwitchesFrom(*base::CommandLine::ForCurrentProcess(),
                                    kCommonSwitchNames);
     if (process_type == ::switches::kUtilityProcess ||
@@ -1470,9 +1472,8 @@ void ElectronBrowserClient::RegisterAssociatedInterfaceBindersForServiceWorker(
       base::BindRepeating(&extensions::RendererStartupHelper::BindForRenderer,
                           service_worker_version_info.process_id));
   associated_registry.AddInterface<extensions::mojom::ServiceWorkerHost>(
-      base::BindRepeating(
-          &extensions::ServiceWorkerHost::BindReceiver,
-          service_worker_version_info.process_id.GetUnsafeValue()));
+      base::BindRepeating(&extensions::ServiceWorkerHost::BindReceiver,
+                          service_worker_version_info.process_id));
 #endif
 }
 
@@ -1748,6 +1749,12 @@ bool ElectronBrowserClient::DoesSiteRequireDedicatedProcess(
   return content::ContentBrowserClient::DoesSiteRequireDedicatedProcess(
       browser_context, effective_site_url);
 #endif
+}
+
+bool ElectronBrowserClient::IsFullscreenAllowedForUnfocusedWebContents(
+    content::WebContents* unfocused_web_contents) {
+  return static_cast<content::WebContentsImpl*>(unfocused_web_contents)
+      ->IsGuest();
 }
 
 std::unique_ptr<content::LoginDelegate>

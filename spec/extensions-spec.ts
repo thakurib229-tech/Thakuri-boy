@@ -1,15 +1,16 @@
-import { app, session, webFrameMain, BrowserWindow, ipcMain, WebContents, Extension, Session } from 'electron/main';
+import { app, session, webFrameMain, BrowserWindow, ipcMain, WebContents, Extension, Session, ServiceWorkerInfo, ServiceWorkersRunningStatusChangedEventParams } from 'electron/main';
 
 import { expect } from 'chai';
 import * as WebSocket from 'ws';
 
+import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import * as fs from 'node:fs/promises';
 import * as http from 'node:http';
 import * as path from 'node:path';
 
 import { emittedNTimes, emittedUntil } from './lib/events-helpers';
-import { ifit, listen, waitUntil } from './lib/spec-helpers';
+import { ifit, listen, startRemoteControlApp, waitUntil } from './lib/spec-helpers';
 import { expectWarningMessages } from './lib/warning-helpers';
 import { closeAllWindows, closeWindow, cleanupWebContents } from './lib/window-helpers';
 
@@ -815,6 +816,99 @@ describe('chrome extensions', () => {
       expect(scope).equals(extension.url);
     });
 
+    it('launches background service worker', async () => {
+      const customSession = session.fromPartition(`persist:${uuid.v4()}`);
+      const launchPromise = new Promise<void>(resolve => {
+        customSession.serviceWorkers.on('running-status-changed', ({ runningStatus }) => {
+          if (runningStatus === 'running') resolve();
+        });
+      });
+      const extension = await customSession.extensions.loadExtension(path.join(fixtures, 'extensions', 'mv3-service-worker'));
+      await launchPromise;
+      const serviceWorkers = customSession.serviceWorkers.getAllRunning();
+      expect(Object.values(serviceWorkers).some(worker => worker.scope === extension.url)).equals(true);
+    });
+
+    it('launches background service worker when the extension is loaded again without restarting the app', async () => {
+      const customSession = session.fromPartition(`persist:${uuid.v4()}`);
+      const extensionPath = path.join(fixtures, 'extensions', 'mv3-service-worker');
+
+      const isWorkerRunning = (extension: Extension) => {
+        const serviceWorkers = customSession.serviceWorkers.getAllRunning();
+        return Object.values(serviceWorkers).some(worker => worker.scope === extension.url);
+      };
+
+      const loadAndUnloadExtension = async () => {
+        const launchPromise = new Promise<void>(resolve => {
+          customSession.serviceWorkers.on('running-status-changed', ({ runningStatus }) => {
+            if (runningStatus === 'running') resolve();
+          });
+        });
+        const extension = await customSession.extensions.loadExtension(extensionPath);
+        await launchPromise;
+        expect(isWorkerRunning(extension)).equals(true);
+
+        const stopPromise = new Promise<void>(resolve => {
+          customSession.serviceWorkers.on('running-status-changed', ({ runningStatus }) => {
+            if (runningStatus === 'stopped') resolve();
+          });
+        });
+        customSession.extensions.removeExtension(extension.id);
+        await stopPromise;
+        expect(isWorkerRunning(extension)).equals(false);
+      };
+
+      for (let i = 0; i < 3; i++) {
+        await loadAndUnloadExtension();
+      }
+    });
+
+    // Regression test for https://github.com/electron/electron/issues/41613
+    it('launches background service worker after restarting the app', async () => {
+      const partition = `persist:${uuid.v4()}`;
+      const extensionPath = path.join(fixtures, 'extensions', 'mv3-service-worker');
+
+      const runRemoteControlApp = async () => {
+        const rc = await startRemoteControlApp();
+
+        const exitPromise = once(rc.process, 'exit');
+
+        const { workerScopes, extensionUrl } = await rc.remotely(async (partition: string, extensionPath: string) => {
+          const { session } = require('electron/main');
+          const { setTimeout } = require('node:timers/promises');
+
+          const customSession = session.fromPartition(partition);
+
+          const launchPromise = new Promise<void>(resolve => {
+            customSession.serviceWorkers.on('running-status-changed', ({ runningStatus }: ServiceWorkersRunningStatusChangedEventParams) => {
+              if (runningStatus === 'running') resolve();
+            });
+          });
+          const extension = await customSession.extensions.loadExtension(extensionPath);
+          await launchPromise;
+          const serviceWorkers = customSession.serviceWorkers.getAllRunning();
+
+          const workerScopes = Object.values(serviceWorkers).map(worker => (worker as ServiceWorkerInfo).scope);
+          const extensionUrl = extension.url;
+
+          // Give Chromium some time to update extensions::kPrefHasStartedServiceWorker on disk
+          await setTimeout(500);
+
+          global.setTimeout(() => require('electron').app.quit());
+
+          return { workerScopes, extensionUrl };
+        }, partition, extensionPath);
+
+        await exitPromise;
+
+        expect(workerScopes.includes(extensionUrl)).equals(true);
+      };
+
+      for (let i = 0; i < 3; i++) {
+        await runRemoteControlApp();
+      }
+    });
+
     it('can run chrome extension APIs', async () => {
       const customSession = session.fromPartition(`persist:${uuid.v4()}`);
       const w = new BrowserWindow({ show: false, webPreferences: { session: customSession, nodeIntegration: true } });
@@ -1336,6 +1430,28 @@ describe('chrome extensions', () => {
         const bgAfter = await w.webContents.executeJavaScript('window.getComputedStyle(document.body).backgroundColor');
         expect(bgAfter).to.equal('rgb(255, 0, 0)');
       });
+    });
+  });
+
+  describe('custom protocol', () => {
+    async function runFixture (name: string) {
+      const appProcess = spawn(process.execPath, [(path.join(fixtures, 'extensions', name, 'main.js'))]);
+
+      let output = '';
+      appProcess.stdout.on('data', (data) => { output += data; });
+      await once(appProcess.stdout, 'end');
+
+      return output.trim();
+    };
+
+    it('loads DevTools extensions on custom protocols with allowExtensions privileges and runs content and background scripts', async () => {
+      const output = await runFixture('custom-protocol');
+      expect(output).to.equal('Title: MESSAGE RECEIVED');
+    });
+
+    it('loads DevTools panels on custom protocols with allowExtensions privileges', async () => {
+      const output = await runFixture('custom-protocol-panel');
+      expect(output).to.equal('ELECTRON TEST PANEL created');
     });
   });
 });
